@@ -3,100 +3,149 @@ package handler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
-	"github.com/EduardoOliveira/ckc/database"
-	"github.com/EduardoOliveira/ckc/enrichment"
 	"github.com/EduardoOliveira/ckc/types"
-	syslog "gopkg.in/mcuadros/go-syslog.v2"
 	syslogformat "gopkg.in/mcuadros/go-syslog.v2/format"
 )
 
-type Handler struct {
-	channel     syslog.LogPartsChannel
-	ctx         context.Context
-	neo4jClient *database.Neo4jClient
-	enricher    *enrichment.Enrichment
-	sshdHandler sshdHandler
-	now         func() time.Time // Function to get the current time, can be overridden for testing
+type ContentParser interface {
+	Name() string
+	Parse(ctx context.Context, content string, parent types.ParsedEvent) (types.ParsedEvent, error)
 }
 
-func New(ctx context.Context, neo4jClient *database.Neo4jClient, enrichment *enrichment.Enrichment, channel syslog.LogPartsChannel) *Handler {
+type ContentEnricher interface {
+	Name() string
+	Enrich(ctx context.Context, parsed types.ParsedEvent)
+}
+
+type ContentStore interface {
+	Name() string
+	Store(ctx context.Context, parsed types.ParsedEvent) error
+}
+
+type Handler struct {
+	ctx       context.Context
+	stores    map[types.ServiceName][]ContentStore
+	parsers   map[types.ServiceName][]ContentParser
+	enrichers map[types.ServiceName][]ContentEnricher
+	now       func() time.Time // Function to get the current time, can be overridden for testing
+}
+
+func New(ctx context.Context,
+	parsers map[types.ServiceName][]ContentParser,
+	stores map[types.ServiceName][]ContentStore,
+	enrichers map[types.ServiceName][]ContentEnricher,
+) *Handler {
 	return &Handler{
-		channel:     channel,
-		ctx:         ctx,
-		neo4jClient: neo4jClient,
-		enricher:    enrichment,
-		sshdHandler: NewSSHDHandler(),
-		now:         time.Now,
+		ctx:       ctx,
+		parsers:   parsers,
+		stores:    stores,
+		enrichers: enrichers,
+		now:       time.Now,
 	}
 }
 
-func (h *Handler) Start() error {
-	go func() {
-		for {
-			select {
-			case logParts := <-h.channel:
-				go h.handleMessage(h.ctx, logParts)
-			case <-h.ctx.Done():
+func (h *Handler) Handle(logParts syslogformat.LogParts, _ int64, err error) {
+	if err != nil {
+		slog.Error("Error handling log parts: ", "error", err)
+		return
+	}
+
+	var ok bool
+	var content string
+	if content = getStringValue(logParts, "content", ""); content == "" {
+		slog.Warn("Log parts missing 'content', skipping", "logParts", logParts)
+		return
+	}
+
+	var serviceName types.ServiceName
+	if serviceName, ok = types.ParseServiceNameFromAny(logParts["tag"]); !ok {
+		slog.Warn("Failed to parse service name from log parts", "logParts", logParts)
+		return
+	}
+
+	slog.Info("Handling log parts", "service", serviceName, slog.Any("logParts", logParts))
+	parsed := types.ParsedEvent{
+		Hostname:    getStringValue(logParts, "hostname", ""),
+		Ingestion:   getTimeFromLogParts(logParts),
+		ServiceName: serviceName,
+	}
+
+	ctx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
+	defer cancel()
+
+	if len(h.parsers[serviceName]) == 0 {
+		slog.Warn("No parsers registered for service", "service", serviceName)
+	} else {
+		for _, parser := range h.parsers[serviceName] {
+			if parser == nil {
+				slog.Warn("No parser found for service", "service", serviceName)
+				return
+			}
+			parsed, err = parser.Parse(ctx, content, parsed)
+			if err != nil {
+				slog.Warn("Failed to parse content for service", "service", serviceName, "parser", parser.Name(), "error", err)
 				return
 			}
 		}
-	}()
+	}
 
-	return nil
-}
+	if len(h.stores[serviceName]) == 0 {
+		slog.Warn("No stores registered for service", "service", serviceName)
+		return
+	} else {
+		for _, store := range h.stores[serviceName] {
+			if store == nil {
+				slog.Warn("No store found for service", "service", serviceName)
+				return
+			}
+			if err := store.Store(ctx, parsed); err != nil {
+				slog.Error("Failed to store parsed event", "service", serviceName, "store", store.Name(), "error", err)
+				return
+			}
+		}
+	}
 
-func (h *Handler) handleMessage(_ context.Context, logParts syslogformat.LogParts) {
-	// fmt.Println(logParts)
-	fmt.Println(getStringValue(logParts, "content", ""))
-	content := getStringValue(logParts, "content", "")
-	var cyphers []types.Cypher
-	if content == "" {
+	if len(h.enrichers[serviceName]) == 0 {
+		slog.Warn("No enrichers registered for service", "service", serviceName)
 		return
-	}
-	switch getStringValue(logParts, "tag", "") {
-	case "sshd":
-		// Handle SSH logs
-		_, c, err := h.sshdHandler.Parse(content)
-		if err != nil {
-			log.Printf("Failed to parse SSH log: %v", err)
-			return
+	} else {
+		for _, enricher := range h.enrichers[serviceName] {
+			if enricher == nil {
+				slog.Warn("No enricher found for service", "service", serviceName)
+				return
+			}
+			// enrichment should be done asynchronously
+			go enricher.Enrich(ctx, parsed)
 		}
-		if len(c) > 0 {
-			cyphers = append(cyphers, c...)
-		}
-		// h.enricher.EnrichIP(ip)
 	}
-	if len(cyphers) == 0 {
-		log.Printf("No Cypher objects created for log: %v", logParts)
-		return
-	}
-	out, err := h.neo4jClient.Write(h.ctx, cyphers...)
-	if err != nil {
-		log.Printf("Failed to write to Neo4j: %v", err)
-		return
-	}
-	log.Printf("Write result: %v", out)
 }
 
 // getTimestampFromLogParts extracts timestamp from log parts
-func getTimestampFromLogParts(logParts map[string]any) int64 {
+func getTimeFromLogParts(logParts map[string]any) time.Time {
 	// Try to get timestamp from log parts
 	if ts, ok := logParts["timestamp"]; ok {
-		switch t := ts.(type) {
+		switch v := ts.(type) {
+		case string:
+			// Layout      = "01/02 03:04:05PM '06 -0700" // The reference time, in numerical order.
+			t, err := time.Parse("2006-01-02 15:04:05 -0700 MST", v)
+			if err == nil {
+				return t
+			}
+			slog.Warn("Failed to parse timestamp from string", "timestamp", v, "error", err)
 		case time.Time:
-			return t.Unix()
+			return v
 		case int64:
-			return t
+			return time.Unix(v, 0)
 		case int:
-			return int64(t)
+			return time.Unix(int64(v), 0)
 		}
 	}
 
 	// If no timestamp found or not a valid type, use current time
-	return time.Now().Unix()
+	return time.Now()
 }
 
 // getStringValue safely extracts a string value from map

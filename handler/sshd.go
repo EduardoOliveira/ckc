@@ -1,23 +1,28 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/EduardoOliveira/ckc/internal/ptr"
+	"github.com/EduardoOliveira/ckc/internal/opt"
 	"github.com/EduardoOliveira/ckc/types"
 	"github.com/elastic/go-grok"
 )
 
-type sshdHandler struct {
+type sshdParser struct {
 	target types.Service
 	groks  []*grok.Grok
 	now    func() time.Time
 }
 
-func NewSSHDHandler() sshdHandler {
-	rtn := sshdHandler{
+func (h *sshdParser) Name() string {
+	return "sshd_grok_parser"
+}
+
+func NewSSHDParser() sshdParser {
+	rtn := sshdParser{
 		groks: make([]*grok.Grok, 2),
 		now:   time.Now,
 		target: types.Service{
@@ -40,29 +45,60 @@ func NewSSHDHandler() sshdHandler {
 	return rtn
 }
 
-func (h *sshdHandler) Parse(content string) (types.IPAddress, []types.Cypher, error) {
-	var ipAddress types.IPAddress
-	var username types.Username
-	var success bool
-	bestMatch := 0
+func (h *sshdParser) Parse(ctx context.Context, content string, parent types.ParsedEvent) (types.ParsedEvent, error) {
+	parent.ServiceName = types.SSHDService
+	matches, err := h.parseContent(content)
+	if err != nil {
+		return parent, fmt.Errorf("failed to parse content: %w", err)
+	}
+	parent.Service = types.Service{
+		Name: "ssd",
+		Host: parent.Hostname,
+		Port: 22,
+	}
+	parent.IPAddress = types.IPAddress{
+		Address: matches["system.auth.ip"],
+	}
+	parent.Username = types.Username{
+		Name: matches["system.auth.user"],
+	}
+
+	parent.SSHDEvent = opt.Some(types.SSHDParsedEvent{
+		Method:    matches["system.auth.ssh.method"],
+		Signature: matches["system.auth.ssh.signature"],
+		Result:    matches["system.auth.ssh.event"],
+	})
+	if strings.HasPrefix(matches["system.auth.ssh.event"], "Accepted") {
+		parent.SSHDEvent.Value.Success = true
+	}
+
+	return parent, nil
+}
+
+func (h *sshdParser) parseContent(content string) (map[string]string, error) {
+	bestMatch := map[string]string{}
+
 	for _, g := range h.groks {
 		matches, err := g.ParseString(content)
 		if err != nil {
 			fmt.Printf("Failed to parse log with grok pattern: %v\n", err)
 			continue
 		}
-		if len(matches) > 0 && len(matches) > bestMatch {
-			bestMatch = len(matches)
-			fmt.Println("Matched Grok pattern:", matches)
-			ipAddress = types.NewIPAddress(matches["system.auth.ip"])
-			username = types.NewUsername(matches["system.auth.user"])
-			if strings.HasPrefix(matches["system.auth.ssh.event"], "Accepted") {
-				success = true
-			} else {
-				success = false
-			}
+		if len(matches) > 0 && len(matches) > len(bestMatch) {
+			bestMatch = matches
 		}
 	}
+	if len(bestMatch) == 0 {
+		return nil, fmt.Errorf("no grok pattern matched for content: %s", content)
+	}
+	return bestMatch, nil
+}
+
+/*
+func (h *sshdParser) _Parse(content string) (types.IPAddress, []types.Cypher, error) {
+	var ipAddress types.IPAddress
+	var username types.Username
+
 	if bestMatch > 0 {
 		return ipAddress, []types.Cypher{
 			&ipAddress,
@@ -74,4 +110,4 @@ func (h *sshdHandler) Parse(content string) (types.IPAddress, []types.Cypher, er
 		}, nil
 	}
 	return ipAddress, []types.Cypher{}, nil
-}
+}*/

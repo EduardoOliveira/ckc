@@ -2,90 +2,79 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
-	"os"
+	"log/slog"
 
-	"github.com/EduardoOliveira/ckc/database"
-	"github.com/EduardoOliveira/ckc/enrichment"
 	"github.com/EduardoOliveira/ckc/handler"
+	"github.com/EduardoOliveira/ckc/internal/cfg"
+	"github.com/EduardoOliveira/ckc/internal/ptr"
+	"github.com/EduardoOliveira/ckc/stores"
+	"github.com/EduardoOliveira/ckc/types"
 	syslog "gopkg.in/mcuadros/go-syslog.v2"
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
 
 	// Initialize Neo4j connection
-	neo4jClient, err := setupNeo4jConnection(ctx)
+	neo4j, err := mustSetupNeo4jClient(ctx)
 	if err != nil {
 		log.Fatalf("Failed to connect to Neo4j: %v", err)
 	}
-	defer neo4jClient.Close(ctx)
+	defer neo4j.Close(ctx)
+	slog.Info("Connected to Neo4j", "uri", cfg.Must("NEO4J_URI"), "database", cfg.Must("NEO4J_DATABASE"))
 
-	enricher := enrichment.New(ctx, neo4jClient)
-	/*
-		if err := enricher.Start(); err != nil {
-			log.Fatalf("Failed to start enrichment service: %v", err)
-			return
-		}*/
+	handler := handler.New(ctx,
+		map[types.ServiceName][]handler.ContentParser{
+			types.SSHDService: {
+				ptr.To(handler.NewSSHDParser()),
+			},
+		},
+		map[types.ServiceName][]handler.ContentStore{
+			types.SSHDService: {
+				ptr.To(stores.NewNeo4jSSHD(neo4j)),
+			},
+		},
+		map[types.ServiceName][]handler.ContentEnricher{},
+	)
 
-	// Set up syslog channel and handler
+	mustRunRsyslogServer(cancel, handler)
+
+	select {
+	case <-ctx.Done():
+		log.Println("Shutting down gracefully...")
+	}
+	cancel(nil)
+}
+
+func mustSetupNeo4jClient(ctx context.Context) (*stores.Neo4jClient, error) {
+	config := stores.Neo4jConfig{
+		URI:      cfg.Must("NEO4J_URI"),
+		Username: cfg.Must("NEO4J_USERNAME"),
+		Password: cfg.Must("NEO4J_PASSWORD"),
+		Database: cfg.Must("NEO4J_DATABASE"),
+	}
+
+	return stores.NewNeo4jClient(ctx, config)
+}
+
+func mustRunRsyslogServer(cancel context.CancelCauseFunc, handler *handler.Handler) syslog.LogPartsChannel {
 	channel := make(syslog.LogPartsChannel)
-	chanHandler := syslog.NewChannelHandler(channel)
-
-	// Initialize message handler with Neo4j client
-	messageHandler := handler.New(ctx, neo4jClient, enricher, channel)
-
-	// Configure and start syslog server
 	server := syslog.NewServer()
 	server.SetFormat(syslog.Automatic)
-	server.SetHandler(chanHandler)
+	server.SetHandler(handler)
 
-	if err := server.ListenUDP("0.0.0.0:514"); err != nil {
-		log.Fatalf("Failed to listen on UDP port 514: %v", err)
-		return
+	if err := server.ListenUDP(cfg.Must("RSYSLOG_SERVER")); err != nil {
+		panic("Failed to start syslog server: " + err.Error())
 	}
 	if err := server.Boot(); err != nil {
-		log.Fatalf("Failed to start syslog server: %v", err)
-		return
+		panic("Failed to start syslog server: " + err.Error())
 	}
-
-	// Start message handler
-	if err := messageHandler.Start(); err != nil {
-		log.Fatalf("Failed to start message handler: %v", err)
-		return
-	}
-
-	server.Wait()
-}
-
-// setupNeo4jConnection initializes the Neo4j client with configuration from environment variables
-func setupNeo4jConnection(ctx context.Context) (*database.Neo4jClient, error) {
-	// Get Neo4j connection parameters from environment variables
-	uri := getEnvWithDefault("NEO4J_URI", "neo4j://192.168.0.223:7687")
-	username := getEnvWithDefault("NEO4J_USERNAME", "neo4j")
-	password := getEnvWithDefault("NEO4J_PASSWORD", "123412341234")
-	db := getEnvWithDefault("NEO4J_DATABASE", "neo4j")
-
-	log.Printf("Connecting to Neo4j at %s", uri)
-
-	// Create Neo4j configuration
-	config := database.Neo4jConfig{
-		URI:      uri,
-		Username: username,
-		Password: password,
-		Database: db,
-	}
-
-	// Initialize and return Neo4j client
-	return database.NewNeo4jClient(ctx, config)
-}
-
-// getEnvWithDefault returns the value of an environment variable or a default value if not set
-func getEnvWithDefault(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-	return value
+	go func() {
+		server.Wait()
+		cancel(errors.New("ryslog server stoped")) // Notify the main function to shut down
+	}()
+	return channel
 }

@@ -1,8 +1,24 @@
 package types
 
-import "time"
+import (
+	"time"
+
+	"github.com/EduardoOliveira/ckc/internal/opt"
+)
 
 var Now = time.Now
+
+type ParsedEvent struct {
+	ServiceName ServiceName `json:"service_name"`
+	Hostname    string      `json:"hostname"`
+	Ingestion   time.Time   `json:"ingestion"`
+	IPAddress   IPAddress   `json:"ip_address"`
+	Username    Username    `json:"username"`
+	Service     Service     `json:"service"`
+
+	// optional fields based on the event type
+	SSHDEvent opt.Optional[SSHDParsedEvent] `json:"sshd_event"`
+}
 
 type IPAddress struct {
 	Address   string    `json:"address"`
@@ -38,6 +54,7 @@ func (ip *IPAddress) ToCypher() (cypher string, params map[string]any) {
 
 type Service struct {
 	Name string `json:"name"`
+	Host string `json:"host,omitempty"`
 	Port int    `json:"port"`
 }
 

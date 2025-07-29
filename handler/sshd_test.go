@@ -10,7 +10,7 @@ import (
 
 func TestParseSSHDLog(t *testing.T) {
 	// Create a new SSHD handler
-	handler := NewSSHDHandler()
+	handler := NewSSHDParser()
 	handler.now = now
 	types.Now = now
 	/*
@@ -49,7 +49,7 @@ func TestParseSSHDLog(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, result, err := handler.Parse(tc.log)
+			result, err := handler.parseContent(tc.log)
 			assert.NoError(t, err)
 			snaps.MatchSnapshot(t, result)
 		})
