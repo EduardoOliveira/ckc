@@ -114,6 +114,9 @@ LIMIT 1
 	}
 	slog.InfoContext(ctx, "Query executed", "cypher", cypher, "props", props, "result", res)
 
+	if len(res.Records) == 0 {
+		return time.Time{}, fmt.Errorf("no enrichment record found for IP: %s", target.Address)
+	}
 	ts, _, err := n.GetRecordValue[time.Time](res.Records[0], "last_enrichment")
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to get last enrichment time", "ip", target.Address, "error", err)
