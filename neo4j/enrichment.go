@@ -101,16 +101,24 @@ WITH ip_1
 
 func (c *Neo4jClient) GetLastEnrichedAt(ctx context.Context, target types.IPAddress, enrichmentType string) (time.Time, error) {
 	cypher := fmt.Sprintf(`
-MATCH (ip:IPAddress {address: %s})-[eb:ENRICHED_BY]->(enrichment:%s)
-`, target.Address, enrichmentType)
+MATCH (ip:IPAddress)-[e:ENRICHED_BY]->(:%s)
+WHERE ip.address = "%s"
+RETURN e.last_enrichment AS last_enrichment
+LIMIT 1
+`, enrichmentType, target.Address)
 	props := map[string]any{}
-	_, err := c.ExecuteRead(ctx, func(tx n.ManagedTransaction) (any, error) {
-		return tx.Run(ctx, cypher, props)
-	})
+	res, err := c.ExecuteQuery2(ctx, cypher, props)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to get last enriched at", "ip", target.Address, "error", err)
+		slog.ErrorContext(ctx, "Failed to get last enriched at", "ip", target.Address, "error", err, "cypher", cypher, "props", props)
 		return time.Time{}, fmt.Errorf("failed to get last enriched at: %w", err)
 	}
+	slog.InfoContext(ctx, "Query executed", "cypher", cypher, "props", props, "result", res)
 
-	return time.Time{}, nil
+	ts, _, err := n.GetRecordValue[time.Time](res.Records[0], "last_enrichment")
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to get last enrichment time", "ip", target.Address, "error", err)
+		return time.Time{}, fmt.Errorf("failed to get last enrichment time: %w", err)
+	}
+
+	return ts, nil
 }

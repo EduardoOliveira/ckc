@@ -18,7 +18,6 @@ type AIPDBEnricher struct {
 	ctx       context.Context
 	apiKey    string
 	neoClient *neo4j.Neo4jClient
-	locks     sync.Map
 }
 
 func (_ *AIPDBEnricher) Name() string {
@@ -35,13 +34,20 @@ func NewAIPDBEnricher(ctx context.Context, apiKey string, n *neo4j.Neo4jClient) 
 }
 
 func (e *AIPDBEnricher) Enrich(parsed types.ParsedEvent) {
-	// check if there is fresh data in the cache
-
-	if _, ok := e.locks.Load(parsed.IPAddress.Address); ok {
-		slog.InfoContext(e.ctx, "IP already enriched recently, skipping", "ip", parsed.IPAddress)
-		return
+	// Check if the IP was enriched in the past 24 hours
+	lastEnriched, err := e.neoClient.GetLastEnrichedAt(e.ctx, parsed.IPAddress, "AIPDBData")
+	if err != nil {
+		slog.WarnContext(e.ctx, "Failed to get last enrichment time, proceeding with enrichment", "ip", parsed.IPAddress, "error", err)
+	} else {
+		slog.InfoContext(e.ctx, "Last enrichment time", "ip", parsed.IPAddress, "last_enriched", lastEnriched)
+		if !lastEnriched.IsZero() && time.Since(lastEnriched) < 24*time.Hour {
+			slog.InfoContext(e.ctx, "IP was enriched less than 24 hours ago, skipping",
+				"ip", parsed.IPAddress,
+				"last_enriched", lastEnriched,
+				"hours_ago", time.Since(lastEnriched).Hours())
+			return
+		}
 	}
-
 	slog.InfoContext(e.ctx, "Enriching IP with AIPDB", "ip", parsed.IPAddress)
 	timeout, cancel := context.WithTimeout(e.ctx, 60*time.Second)
 	defer cancel()
@@ -64,11 +70,10 @@ func (e *AIPDBEnricher) Enrich(parsed types.ParsedEvent) {
 			slog.ErrorContext(timeout, "Failed to save AIPDB data", "ip", parsed.IPAddress, "error", err)
 			return
 		}
-		e.locks.Store(parsed.IPAddress.Address, struct{}{})
 	}
 }
 
-func (e AIPDBEnricher) getData(ctx context.Context, ip types.IPAddress) (job, <-chan opt.Result[types.AIPDBData]) {
+func (e *AIPDBEnricher) getData(ctx context.Context, ip types.IPAddress) (job, <-chan opt.Result[types.AIPDBData]) {
 	done := make(chan opt.Result[types.AIPDBData], 1)
 	return func() {
 		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.abuseipdb.com/api/v2/check?verbose=false&ipAddress="+ip.Address, nil)

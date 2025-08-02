@@ -60,6 +60,7 @@ func (c *Neo4jClient) Close(ctx context.Context) error {
 }
 
 // ExecuteQuery executes a query and returns the results
+// deprecated: AI generated crap, 3h of debugging, not to self, next time ftm... use ExecuteQuery2 instead
 func (c *Neo4jClient) ExecuteQuery(
 	ctx context.Context,
 	cypher string,
@@ -80,6 +81,14 @@ func (c *Neo4jClient) ExecuteQuery(
 
 	// Execute query
 	return session.Run(ctx, cypher, params)
+}
+
+func (c *Neo4jClient) ExecuteQuery2(
+	ctx context.Context,
+	cypher string,
+	params map[string]any,
+) (*n.EagerResult, error) {
+	return n.ExecuteQuery(ctx, c.driver, cypher, params, n.EagerResultTransformer)
 }
 
 // ExecuteWrite executes a write transaction
