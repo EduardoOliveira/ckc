@@ -52,7 +52,7 @@ func (h *sshdParser) Parse(ctx context.Context, content string, parent types.Par
 		return parent, fmt.Errorf("failed to parse content: %w", err)
 	}
 	parent.Service = types.Service{
-		Name: "ssd",
+		Name: "sshd",
 		Host: parent.Hostname,
 		Port: 22,
 	}

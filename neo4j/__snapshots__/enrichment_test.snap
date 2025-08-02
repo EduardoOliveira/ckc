@@ -1,0 +1,112 @@
+
+[TestNeo4jEnrichment/test_simple - 1]
+MERGE (ip_1:IPAddress {address: "127.0.0.1"})
+WITH ip_1
+
+MERGE (aipdb:AIPDBData {address: $aipdb_ip_address})
+    SET aipdb.isp = $aipdb_isp, 
+    aipdb.is_tor = $aipdb_is_tor, 
+    aipdb.is_public = $aipdb_is_public,
+    aipdb.is_whitelisted = $aipdb_is_whitelisted
+    WITH aipdb
+
+MERGE (ip_1)-[:AIPDB_ENRICHED]->(aipdb)
+    SET aipdb.last_enrichment = datetime($now)
+
+MERGE (pt:Country {name: $pt_name})
+SET pt.country_code = $pt_country_code
+WITH pt 
+MERGE (ip_1)-[:LOCATED_IN]->(pt)
+MERGE (es:Country {name: $es_name})
+SET es.country_code = $es_country_code
+WITH es 
+MERGE (fr:Country {name: $fr_name})
+SET fr.country_code = $fr_country_code
+WITH fr 
+MERGE (ip_1)-[reported_1:REPORTED_IN]->(es)
+SET reported_1.times = $reported_1_times
+WITH reported_1 
+
+MERGE (ip_1)-[reported_2:REPORTED_IN]->(fr)
+SET reported_2.times = $reported_2_times
+WITH reported_2 
+
+
+FINISH
+
+map[string]interface {}{
+    "aipdb_ip_address":     "127.0.0.1",
+    "aipdb_is_public":      bool(true),
+    "aipdb_is_tor":         bool(false),
+    "aipdb_is_whitelisted": bool(false),
+    "aipdb_isp":            "ISP Example",
+    "es_country_code":      "es",
+    "es_name":              "Spain",
+    "fr_country_code":      "fr",
+    "fr_name":              "France",
+    "now":                  "2038-01-19T03:14:07Z",
+    "pt_country_code":      "pt",
+    "pt_name":              "Portugal",
+    "reported_1_times":     int64(1),
+    "reported_2_times":     int64(2),
+}
+---
+
+[TestNeo4jEnrichment/reported_in_origin - 1]
+MERGE (ip_1:IPAddress {address: "127.0.0.1"})
+WITH *
+
+
+MERGE (aipdb:AIPDBData {address: $aipdb_ip_address})
+    SET aipdb.isp = $aipdb_isp, 
+    aipdb.is_tor = $aipdb_is_tor, 
+    aipdb.is_public = $aipdb_is_public,
+    aipdb.is_whitelisted = $aipdb_is_whitelisted
+    WITH * 
+
+MERGE (ip_1)-[:AIPDB_ENRICHED]->(aipdb)
+    SET aipdb.last_enrichment = datetime($now)
+
+MERGE (pt:Country {name: $pt_name})
+SET pt.country_code = $pt_country_code
+WITH * 
+MERGE (ip_1)-[:LOCATED_IN]->(pt)
+MERGE (es:Country {name: $es_name})
+SET es.country_code = $es_country_code
+WITH * 
+MERGE (fr:Country {name: $fr_name})
+SET fr.country_code = $fr_country_code
+WITH * 
+MERGE (ip_1)-[reported_1:REPORTED_IN]->(es)
+SET reported_1.times = $reported_1_times
+WITH reported_1 
+
+MERGE (ip_1)-[reported_2:REPORTED_IN]->(fr)
+SET reported_2.times = $reported_2_times
+WITH reported_2 
+
+MERGE (ip_1)-[reported_3:REPORTED_IN]->(pt)
+SET reported_3.times = $reported_3_times
+WITH reported_3 
+
+
+FINISH
+
+map[string]interface {}{
+    "aipdb_ip_address":     "127.0.0.1",
+    "aipdb_is_public":      bool(true),
+    "aipdb_is_tor":         bool(false),
+    "aipdb_is_whitelisted": bool(false),
+    "aipdb_isp":            "ISP Example",
+    "es_country_code":      "es",
+    "es_name":              "Spain",
+    "fr_country_code":      "fr",
+    "fr_name":              "France",
+    "now":                  "2038-01-19T03:14:07Z",
+    "pt_country_code":      "pt",
+    "pt_name":              "Portugal",
+    "reported_1_times":     int64(1),
+    "reported_2_times":     int64(2),
+    "reported_3_times":     int64(2),
+}
+---

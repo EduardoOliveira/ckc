@@ -17,7 +17,7 @@ type ContentParser interface {
 
 type ContentEnricher interface {
 	Name() string
-	Enrich(ctx context.Context, parsed types.ParsedEvent)
+	Enrich(parsed types.ParsedEvent)
 }
 
 type ContentStore interface {
@@ -118,7 +118,7 @@ func (h *Handler) Handle(logParts syslogformat.LogParts, _ int64, err error) {
 				return
 			}
 			// enrichment should be done asynchronously
-			go enricher.Enrich(ctx, parsed)
+			go enricher.Enrich(parsed)
 		}
 	}
 }

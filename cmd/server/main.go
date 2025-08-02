@@ -6,10 +6,11 @@ import (
 	"log"
 	"log/slog"
 
+	"github.com/EduardoOliveira/ckc/enrichment"
 	"github.com/EduardoOliveira/ckc/handler"
 	"github.com/EduardoOliveira/ckc/internal/cfg"
 	"github.com/EduardoOliveira/ckc/internal/ptr"
-	"github.com/EduardoOliveira/ckc/stores"
+	"github.com/EduardoOliveira/ckc/neo4j"
 	"github.com/EduardoOliveira/ckc/types"
 	syslog "gopkg.in/mcuadros/go-syslog.v2"
 )
@@ -19,11 +20,8 @@ func main() {
 	defer cancel(nil)
 
 	// Initialize Neo4j connection
-	neo4j, err := mustSetupNeo4jClient(ctx)
-	if err != nil {
-		log.Fatalf("Failed to connect to Neo4j: %v", err)
-	}
-	defer neo4j.Close(ctx)
+	nClient := mustSetupNeo4jClient(ctx)
+	defer nClient.Close(ctx)
 	slog.Info("Connected to Neo4j", "uri", cfg.Must("NEO4J_URI"), "database", cfg.Must("NEO4J_DATABASE"))
 
 	handler := handler.New(ctx,
@@ -34,10 +32,14 @@ func main() {
 		},
 		map[types.ServiceName][]handler.ContentStore{
 			types.SSHDService: {
-				ptr.To(stores.NewNeo4jSSHD(neo4j)),
+				ptr.To(neo4j.NewNeo4jSSHD(nClient)),
 			},
 		},
-		map[types.ServiceName][]handler.ContentEnricher{},
+		map[types.ServiceName][]handler.ContentEnricher{
+			types.SSHDService: {
+				ptr.To(enrichment.NewAIPDBEnricher(ctx, cfg.Must("AIPDB_API_KEY"), nClient)),
+			},
+		},
 	)
 
 	mustRunRsyslogServer(cancel, handler)
@@ -49,15 +51,18 @@ func main() {
 	cancel(nil)
 }
 
-func mustSetupNeo4jClient(ctx context.Context) (*stores.Neo4jClient, error) {
-	config := stores.Neo4jConfig{
+func mustSetupNeo4jClient(ctx context.Context) *neo4j.Neo4jClient {
+	config := neo4j.Neo4jConfig{
 		URI:      cfg.Must("NEO4J_URI"),
 		Username: cfg.Must("NEO4J_USERNAME"),
 		Password: cfg.Must("NEO4J_PASSWORD"),
 		Database: cfg.Must("NEO4J_DATABASE"),
 	}
-
-	return stores.NewNeo4jClient(ctx, config)
+	client, err := neo4j.NewNeo4jClient(ctx, config)
+	if err != nil {
+		panic("Failed to create Neo4j client: " + err.Error())
+	}
+	return client
 }
 
 func mustRunRsyslogServer(cancel context.CancelCauseFunc, handler *handler.Handler) syslog.LogPartsChannel {

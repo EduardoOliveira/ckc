@@ -1,20 +1,130 @@
 
-[TestParseSSHDLog/Invalid_user_SSHD_log - 1]
-map[string]string{"system.auth.ip":"10.0.2.2", "system.auth.ssh.event":"Invalid", "system.auth.user":"test"}
----
-
 [TestParseSSHDLog/Valid_SSHD_log_with_user - 1]
-map[string]string{"system.auth.ip":"10.0.2.2", "system.auth.port":"63673", "system.auth.ssh.event":"Accepted", "system.auth.ssh.method":"publickey", "system.auth.ssh.signature":"RSA 39:33:99:e9:a0:dc:f2:33:a3:e5:72:3b:7c:3a:56:84", "system.auth.user":"vagrant"}
+types.ParsedEvent{
+    ServiceName: "sshd",
+    Hostname:    "",
+    Ingestion:   time.Date(2038, time.January, 19, 3, 14, 7, 0, time.UTC),
+    IPAddress:   types.IPAddress{
+        Address:    "10.0.2.2",
+        Seen:       0,
+        FirstSeen:  time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen:   time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        EnrichedBy: {},
+    },
+    Username: types.Username{
+        Name:     "vagrant",
+        Seen:     0,
+        FistSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+    },
+    Service:   types.Service{Name:"ssd", Host:"", Port:22},
+    SSHDEvent: opt.Optional[github.com/EduardoOliveira/ckc/types.SSHDParsedEvent]{
+        Value:   &types.SSHDParsedEvent{Result:"Accepted", Success:true, Method:"publickey", Signature:"RSA 39:33:99:e9:a0:dc:f2:33:a3:e5:72:3b:7c:3a:56:84"},
+        Present: true,
+    },
+}
 ---
 
 [TestParseSSHDLog/Valid_SSHD_log_with_password - 1]
-map[string]string{"system.auth.ip":"192.168.33.1", "system.auth.port":"58803", "system.auth.ssh.event":"Accepted", "system.auth.ssh.method":"password", "system.auth.user":"vagrant"}
+types.ParsedEvent{
+    ServiceName: "sshd",
+    Hostname:    "",
+    Ingestion:   time.Date(2038, time.January, 19, 3, 14, 7, 0, time.UTC),
+    IPAddress:   types.IPAddress{
+        Address:    "192.168.33.1",
+        Seen:       0,
+        FirstSeen:  time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen:   time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        EnrichedBy: {},
+    },
+    Username: types.Username{
+        Name:     "vagrant",
+        Seen:     0,
+        FistSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+    },
+    Service:   types.Service{Name:"ssd", Host:"", Port:22},
+    SSHDEvent: opt.Optional[github.com/EduardoOliveira/ckc/types.SSHDParsedEvent]{
+        Value:   &types.SSHDParsedEvent{Result:"Accepted", Success:true, Method:"password", Signature:""},
+        Present: true,
+    },
+}
 ---
 
 [TestParseSSHDLog/Failed_SSHD_log_with_root_user - 1]
-map[string]string{"system.auth.ip":"116.31.116.24", "system.auth.port":"29160", "system.auth.ssh.event":"Failed", "system.auth.ssh.method":"password", "system.auth.user":"root"}
+types.ParsedEvent{
+    ServiceName: "sshd",
+    Hostname:    "",
+    Ingestion:   time.Date(2038, time.January, 19, 3, 14, 7, 0, time.UTC),
+    IPAddress:   types.IPAddress{
+        Address:    "116.31.116.24",
+        Seen:       0,
+        FirstSeen:  time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen:   time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        EnrichedBy: {},
+    },
+    Username: types.Username{
+        Name:     "root",
+        Seen:     0,
+        FistSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+    },
+    Service:   types.Service{Name:"ssd", Host:"", Port:22},
+    SSHDEvent: opt.Optional[github.com/EduardoOliveira/ckc/types.SSHDParsedEvent]{
+        Value:   &types.SSHDParsedEvent{Result:"Failed", Success:false, Method:"password", Signature:""},
+        Present: true,
+    },
+}
 ---
 
 [TestParseSSHDLog/Failed_SSHD_log_with_invalid_user - 1]
-map[string]string{"system.auth.ip":"142.0.45.14", "system.auth.port":"52772", "system.auth.ssh.event":"Failed", "system.auth.ssh.method":"password", "system.auth.user":"aurelien"}
+types.ParsedEvent{
+    ServiceName: "sshd",
+    Hostname:    "",
+    Ingestion:   time.Date(2038, time.January, 19, 3, 14, 7, 0, time.UTC),
+    IPAddress:   types.IPAddress{
+        Address:    "142.0.45.14",
+        Seen:       0,
+        FirstSeen:  time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen:   time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        EnrichedBy: {},
+    },
+    Username: types.Username{
+        Name:     "aurelien",
+        Seen:     0,
+        FistSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+    },
+    Service:   types.Service{Name:"ssd", Host:"", Port:22},
+    SSHDEvent: opt.Optional[github.com/EduardoOliveira/ckc/types.SSHDParsedEvent]{
+        Value:   &types.SSHDParsedEvent{Result:"Failed", Success:false, Method:"password", Signature:""},
+        Present: true,
+    },
+}
+---
+
+[TestParseSSHDLog/Invalid_user_SSHD_log - 1]
+types.ParsedEvent{
+    ServiceName: "sshd",
+    Hostname:    "",
+    Ingestion:   time.Date(2038, time.January, 19, 3, 14, 7, 0, time.UTC),
+    IPAddress:   types.IPAddress{
+        Address:    "10.0.2.2",
+        Seen:       0,
+        FirstSeen:  time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen:   time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        EnrichedBy: {},
+    },
+    Username: types.Username{
+        Name:     "test",
+        Seen:     0,
+        FistSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+        LastSeen: time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC),
+    },
+    Service:   types.Service{Name:"ssd", Host:"", Port:22},
+    SSHDEvent: opt.Optional[github.com/EduardoOliveira/ckc/types.SSHDParsedEvent]{
+        Value:   &types.SSHDParsedEvent{Result:"Invalid", Success:false, Method:"", Signature:""},
+        Present: true,
+    },
+}
 ---

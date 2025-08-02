@@ -2,36 +2,42 @@ package enrichment
 
 import (
 	"context"
-	"time"
-
-	"github.com/EduardoOliveira/ckc/database"
-	"github.com/EduardoOliveira/ckc/types"
+	"sync"
 )
 
-type Enrichment struct {
-	ctx context.Context
-	IPs chan (types.IPAddress)
-}
+type job func()
 
-func New(ctx context.Context, _ *database.Neo4jClient) *Enrichment {
-	return &Enrichment{
-		ctx: ctx,
-		IPs: make(chan types.IPAddress, 10),
+var (
+	workercount = 10
+	jobs        = make(chan job, workercount)
+	startOnce   = &sync.Once{}
+)
+
+func worker(ctx context.Context, jobs <-chan job) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case j, ok := <-jobs:
+			if ok {
+				j()
+			}
+		}
 	}
 }
 
-func (e *Enrichment) Start() error {
-	go func() {
-		for {
-			select {
-			case <-e.ctx.Done():
-				return
-			case _ = <-e.IPs:
-				// Simulate enrichment process
-				time.Sleep(100 * time.Millisecond) // Simulating processing time
-			}
-		}
-	}()
+func publishJob(j job) {
+	jobs <- j
+}
 
-	return nil
+func ensurePool(ctx context.Context) {
+	startOnce.Do(func() {
+		go func() {
+			for range workercount {
+				go worker(ctx, jobs)
+			}
+			defer close(jobs)
+			<-ctx.Done()
+		}()
+	})
 }

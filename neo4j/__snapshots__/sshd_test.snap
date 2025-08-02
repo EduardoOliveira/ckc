@@ -1,0 +1,38 @@
+
+[TestSSDHStoreCypher - 1]
+
+        MERGE (s:Service {name: $serviceName, port: $port, host: $host})
+        ON CREATE SET s.first_seen = datetime($ingestion), s.seen = 0
+        SET s.seen = s.seen + 1
+        WITH s
+
+        MERGE (ip:IPAddress {address: $ip_address})
+        ON CREATE SET ip.seen = 0, ip.first_seen = datetime($ingestion)
+        SET ip.last_seen = datetime($ingestion)
+        SET ip.seen = ip.seen + 1 
+
+        MERGE (ip)-[ct:CONNECTED_TO]->(s)
+        ON CREATE SET ct.times = 0, ct.fist_time = datetime($ingestion)
+        SET ct.times = ct.times + 1, ct.last_time = datetime($ingestion)
+        WITH ct
+
+        MERGE (username:Username {name: $username})
+        ON CREATE SET username.first_seen = datetime($ingestion), username.seen = 0
+        SET username.last_seen = datetime($ingestion), username.seen = username.seen + 1
+        WITH username
+
+        MERGE (username)-[a:AUTHENTICATED_ON]->(s)
+        ON CREATE SET a.first_time = datetime($ingestion), a.failures = 0, a.successes = 0, a.times = 0
+        SET a.last_time = datetime($ingestion), a.times = a.times + 1,
+    a.failures = a.failures + 1
+        
+FINISH
+map[string]interface {}{
+    "host":        "localhost",
+    "ingestion":   "2038-01-19T03:14:07Z",
+    "ip_address":  "127.0.0.1",
+    "port":        int(22),
+    "serviceName": "sshd",
+    "username":    "root",
+}
+---

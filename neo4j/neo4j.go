@@ -1,11 +1,11 @@
-package stores
+package neo4j
 
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/EduardoOliveira/ckc/types"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	n "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // Neo4jConfig contains the configuration for connecting to a Neo4j database
@@ -18,9 +18,10 @@ type Neo4jConfig struct {
 
 // Neo4jClient provides access to the Neo4j database
 type Neo4jClient struct {
-	driver  neo4j.DriverWithContext
+	driver  n.DriverWithContext
 	config  Neo4jConfig
 	context context.Context
+	now     func() time.Time
 }
 
 // NewNeo4jClient creates a new Neo4j client with the given configuration
@@ -31,10 +32,10 @@ func NewNeo4jClient(ctx context.Context, config Neo4jConfig) (*Neo4jClient, erro
 	}
 
 	// Create authentication configuration
-	auth := neo4j.BasicAuth(config.Username, config.Password, "")
+	auth := n.BasicAuth(config.Username, config.Password, "")
 
 	// Create Neo4j driver
-	driver, err := neo4j.NewDriverWithContext(config.URI, auth)
+	driver, err := n.NewDriverWithContext(config.URI, auth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Neo4j driver: %w", err)
 	}
@@ -49,6 +50,7 @@ func NewNeo4jClient(ctx context.Context, config Neo4jConfig) (*Neo4jClient, erro
 		driver:  driver,
 		config:  config,
 		context: ctx,
+		now:     time.Now,
 	}, nil
 }
 
@@ -63,7 +65,7 @@ func (c *Neo4jClient) ExecuteQuery(
 	cypher string,
 	params map[string]any,
 	db ...string,
-) (neo4j.ResultWithContext, error) {
+) (n.ResultWithContext, error) {
 	// Use specified database or default to the configured one
 	database := c.config.Database
 	if len(db) > 0 && db[0] != "" {
@@ -71,7 +73,7 @@ func (c *Neo4jClient) ExecuteQuery(
 	}
 
 	// Create session
-	session := c.driver.NewSession(ctx, neo4j.SessionConfig{
+	session := c.driver.NewSession(ctx, n.SessionConfig{
 		DatabaseName: database,
 	})
 	defer session.Close(ctx)
@@ -80,41 +82,10 @@ func (c *Neo4jClient) ExecuteQuery(
 	return session.Run(ctx, cypher, params)
 }
 
-func (c *Neo4jClient) Write(ctx context.Context, cyphers ...types.Cypher) (any, error) {
-	cypherString := ""
-	params := make(map[string]any)
-	if len(cyphers) == 0 {
-		return nil, fmt.Errorf("no Cypher queries provided")
-	}
-	for _, cypher := range cyphers {
-		c, p := cypher.ToCypher() // Last query should return results
-		if c == "" {
-			cypherString += "\n"
-			continue
-		}
-		cypherString = fmt.Sprintf("%s%s\n", cypherString, c)
-
-		for k, v := range p {
-			if _, exists := params[k]; exists {
-				return nil, fmt.Errorf("duplicate parameter %s in Cypher query,", k)
-			}
-			params[k] = v
-		}
-	}
-	cypherString = fmt.Sprintf("%s\nFINISH", cypherString)
-
-	fmt.Println("Executing Cypher:", cypherString)
-
-	// Execute write transaction
-	return c.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-		return tx.Run(ctx, cypherString, params)
-	})
-}
-
 // ExecuteWrite executes a write transaction
 func (c *Neo4jClient) ExecuteWrite(
 	ctx context.Context,
-	work func(tx neo4j.ManagedTransaction) (any, error),
+	work func(tx n.ManagedTransaction) (any, error),
 	db ...string,
 ) (any, error) {
 	// Use specified database or default to the configured one
@@ -124,9 +95,9 @@ func (c *Neo4jClient) ExecuteWrite(
 	}
 
 	// Create session
-	session := c.driver.NewSession(ctx, neo4j.SessionConfig{
+	session := c.driver.NewSession(ctx, n.SessionConfig{
 		DatabaseName: database,
-		AccessMode:   neo4j.AccessModeWrite,
+		AccessMode:   n.AccessModeWrite,
 	})
 	defer session.Close(ctx)
 
@@ -137,7 +108,7 @@ func (c *Neo4jClient) ExecuteWrite(
 // ExecuteRead executes a read transaction
 func (c *Neo4jClient) ExecuteRead(
 	ctx context.Context,
-	work func(tx neo4j.ManagedTransaction) (any, error),
+	work func(tx n.ManagedTransaction) (any, error),
 	db ...string,
 ) (any, error) {
 	// Use specified database or default to the configured one
@@ -147,9 +118,9 @@ func (c *Neo4jClient) ExecuteRead(
 	}
 
 	// Create session
-	session := c.driver.NewSession(ctx, neo4j.SessionConfig{
+	session := c.driver.NewSession(ctx, n.SessionConfig{
 		DatabaseName: database,
-		AccessMode:   neo4j.AccessModeRead,
+		AccessMode:   n.AccessModeRead,
 	})
 	defer session.Close(ctx)
 

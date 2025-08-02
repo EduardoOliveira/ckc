@@ -1,0 +1,32 @@
+
+[TestMergeCountryCypher/test_simple - 1]
+pt
+MERGE (pt:Country {name: $pt_name})
+SET pt.country_code = $pt_country_code, pt.has_coastline = $pt_has_coastline
+WITH pt 
+
+map[string]interface {}{
+    "pt_country_code":  "PT",
+    "pt_has_coastline": bool(true),
+    "pt_name":          "Portugal",
+}
+---
+
+[TestMergeCityWithCountryCypher/test_simple - 1]
+city_1
+MERGE (city_1:City {name: $city_1_name})
+SET city_1.area = $city_1_area, city_1.population = $city_1_population
+WITH city_1 
+
+map[string]interface {}{
+    "city_1_area":       int(100),
+    "city_1_name":       "Lisbon",
+    "city_1_population": int(500000),
+}
+---
+
+[TestMatchIPAddressCypher/test_simple - 1]
+ip_1
+MERGE (ip_1:IPAddress {address: "127.0.0.1"})
+WITH ip_1
+---
