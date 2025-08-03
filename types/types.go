@@ -23,11 +23,10 @@ type ParsedEvent struct {
 }
 
 type IPAddress struct {
-	Address    string               `json:"address"`
-	Seen       int64                `json:"seen"`
-	FirstSeen  time.Time            `json:"first_seen"`
-	LastSeen   time.Time            `json:"last_seen"`
-	EnrichedBy map[string]time.Time `json:"enriched_by,omitempty"`
+	Address   string    `json:"address"`
+	Seen      int64     `json:"seen"`
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
 }
 
 func MapIPAddressFromMap(m map[string]any) (IPAddress, error) {

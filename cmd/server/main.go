@@ -20,7 +20,7 @@ func main() {
 	defer cancel(nil)
 
 	// Initialize Neo4j connection
-	nClient := mustSetupNeo4jClient(ctx)
+	nClient := neo4j.MustSetupNeo4jClient(ctx)
 	defer nClient.Close(ctx)
 	slog.Info("Connected to Neo4j", "uri", cfg.Must("NEO4J_URI"), "database", cfg.Must("NEO4J_DATABASE"))
 
@@ -49,20 +49,6 @@ func main() {
 		log.Println("Shutting down gracefully...")
 	}
 	cancel(nil)
-}
-
-func mustSetupNeo4jClient(ctx context.Context) *neo4j.Neo4jClient {
-	config := neo4j.Neo4jConfig{
-		URI:      cfg.Must("NEO4J_URI"),
-		Username: cfg.Must("NEO4J_USERNAME"),
-		Password: cfg.Must("NEO4J_PASSWORD"),
-		Database: cfg.Must("NEO4J_DATABASE"),
-	}
-	client, err := neo4j.NewNeo4jClient(ctx, config)
-	if err != nil {
-		panic("Failed to create Neo4j client: " + err.Error())
-	}
-	return client
 }
 
 func mustRunRsyslogServer(cancel context.CancelCauseFunc, handler *handler.Handler) syslog.LogPartsChannel {

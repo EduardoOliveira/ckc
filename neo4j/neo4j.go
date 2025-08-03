@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/EduardoOliveira/ckc/internal/cfg"
 	n "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
@@ -22,6 +23,20 @@ type Neo4jClient struct {
 	config  Neo4jConfig
 	context context.Context
 	now     func() time.Time
+}
+
+func MustSetupNeo4jClient(ctx context.Context) *Neo4jClient {
+	config := Neo4jConfig{
+		URI:      cfg.Must("NEO4J_URI"),
+		Username: cfg.Must("NEO4J_USERNAME"),
+		Password: cfg.Must("NEO4J_PASSWORD"),
+		Database: cfg.Must("NEO4J_DATABASE"),
+	}
+	client, err := NewNeo4jClient(ctx, config)
+	if err != nil {
+		panic("Failed to create Neo4j client: " + err.Error())
+	}
+	return client
 }
 
 // NewNeo4jClient creates a new Neo4j client with the given configuration

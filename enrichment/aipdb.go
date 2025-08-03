@@ -33,43 +33,48 @@ func NewAIPDBEnricher(ctx context.Context, apiKey string, n *neo4j.Neo4jClient) 
 }
 
 func (e *AIPDBEnricher) Enrich(parsed types.ParsedEvent) {
+	if err := e.enrich(parsed.IPAddress); err != nil {
+		slog.ErrorContext(e.ctx, "Failed to enrich IP with AIPDB", "ip", parsed.IPAddress, "error", err)
+	}
+}
+
+func (e *AIPDBEnricher) enrich(ip types.IPAddress) error {
 	// Check if the IP was enriched in the past 24 hours
-	lastEnriched, err := e.neoClient.GetLastEnrichedAt(e.ctx, parsed.IPAddress, "AIPDBData")
+	lastEnriched, err := e.neoClient.GetLastEnrichedAt(e.ctx, ip, "AIPDBData")
 	if err != nil {
-		slog.WarnContext(e.ctx, "Failed to get last enrichment time, proceeding with enrichment", "ip", parsed.IPAddress, "error", err)
+		slog.WarnContext(e.ctx, "Failed to get last enrichment time, proceeding with enrichment", "ip", ip, "error", err)
+		return nil
 	} else {
-		slog.InfoContext(e.ctx, "Last enrichment time", "ip", parsed.IPAddress, "last_enriched", lastEnriched)
 		if !lastEnriched.IsZero() && time.Since(lastEnriched) < 24*time.Hour {
 			slog.InfoContext(e.ctx, "IP was enriched less than 24 hours ago, skipping",
-				"ip", parsed.IPAddress,
+				"ip", ip,
 				"last_enriched", lastEnriched,
 				"hours_ago", time.Since(lastEnriched).Hours())
-			return
+			return nil
 		}
 	}
-	slog.InfoContext(e.ctx, "Enriching IP with AIPDB", "ip", parsed.IPAddress)
+	slog.InfoContext(e.ctx, "Enriching IP with AIPDB", "ip", ip)
 	timeout, cancel := context.WithTimeout(e.ctx, 60*time.Second)
 	defer cancel()
 
 	select {
 	case <-timeout.Done():
-		slog.WarnContext(timeout, "Timeout while waiting for enrichment", "ip", parsed.IPAddress)
+		return fmt.Errorf("timeout while waiting for enrichment of IP %s", ip.Address)
 	case <-e.ctx.Done():
-		slog.WarnContext(timeout, "Global context cancelled while waiting for enrichment", "ip", parsed.IPAddress)
+		return fmt.Errorf("context cancelled while waiting for enrichment of IP %s: %w", ip.Address, e.ctx.Err())
 	default:
-		job, out := e.getData(timeout, parsed.IPAddress)
+		job, out := e.getData(timeout, ip)
 		publishJob(job)
 		result := <-out
 		if result.Error != nil {
-			slog.ErrorContext(timeout, "Failed to enrich IP", "ip", parsed.IPAddress, "error", result.Error)
-			return
+			return fmt.Errorf("failed to enrich IP %s: %w", ip.Address, result.Error)
 		}
-		slog.InfoContext(timeout, "Enrichment result", "ip", parsed.IPAddress)
-		if err := e.neoClient.SaveAIPDBData(timeout, parsed.IPAddress, result.Value); err != nil {
-			slog.ErrorContext(timeout, "Failed to save AIPDB data", "ip", parsed.IPAddress, "error", err)
-			return
+		slog.InfoContext(timeout, "Enrichment result", "ip", ip)
+		if err := e.neoClient.SaveAIPDBData(timeout, ip, result.Value); err != nil {
+			return fmt.Errorf("failed to save AIPDB data for IP %s: %w", ip.Address, err)
 		}
 	}
+	return nil
 }
 
 func (e *AIPDBEnricher) getData(ctx context.Context, ip types.IPAddress) (job, <-chan opt.Result[types.AIPDBData]) {
@@ -100,4 +105,23 @@ func (e *AIPDBEnricher) getData(ctx context.Context, ip types.IPAddress) (job, <
 		}
 		done <- opt.Ok(response.Data)
 	}, done
+}
+
+func (e *AIPDBEnricher) EnrichAll(ctx context.Context) error {
+	slog.InfoContext(ctx, "Starting AIPDB enrichment for all IPs")
+	ips, err := e.neoClient.IterOverIPAddresses(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to iterate over IP addresses: %w", err)
+	}
+
+	for ip, err := range ips {
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to get IP address", "error", err)
+			continue
+		}
+		e.enrich(ip)
+	}
+
+	slog.InfoContext(ctx, "Completed AIPDB enrichment for all IPs")
+	return nil
 }
